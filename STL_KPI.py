@@ -23,13 +23,14 @@ def process_files(client, month_data, thresholds):
             continue
         try:
             # Read the required sheet starting from the correct header row
-            sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
-
-            # Extract necessary columns based on client
-            if client == "GP":
+            if client == "BL":
+                # For BL, use pyxlsb to read binary Excel files
+                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", engine="pyxlsb", header=2)
+                site_kpi = sheet_data[["Generic ID", "Site Wise KPI", "RIO"]]
+                site_kpi.rename(columns={"Generic ID": "Site ID", "Site Wise KPI": "Site wise KPI"}, inplace=True)
+            else:  # GP
+                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
                 site_kpi = sheet_data[["Site ID", "Site wise KPI", "RIO", "STL_SC"]]
-            else:  # BL
-                site_kpi = sheet_data[["Site ID", "Site wise KPI", "RIO"]]
 
             # Ignore rows with KPI == 0
             site_kpi = site_kpi[site_kpi["Site wise KPI"] > 0]
@@ -109,10 +110,11 @@ months = [
 
 # Step 1: File upload
 month_data = {}
+file_type = "xlsb" if client == "BL" else "xlsx"
 st.sidebar.header("Upload Files")
 for month in months:
     st.sidebar.subheader(f"{month} (Threshold: {thresholds[month]})")
-    uploaded_file = st.sidebar.file_uploader(f"Upload {month} File", type=["xlsx"], key=month)
+    uploaded_file = st.sidebar.file_uploader(f"Upload {month} File ({file_type})", type=[file_type], key=month)
     month_data[month] = uploaded_file
 
 # Step 2: Process data when "Process" is clicked
