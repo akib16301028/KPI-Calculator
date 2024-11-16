@@ -50,19 +50,19 @@ def process_files(client, month_data):
             if client == "GP":
                 site_kpi["STL_SC"] = sheet_data["STL_SC"]
 
-            # Remove rows with Site wise KPI = 0 or NaN
-            site_kpi = site_kpi[site_kpi["Site wise KPI"].notna()]
-            site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
-                lambda x: "Unsettled" if x == 0 or pd.isna(x) else ("Pass" if x >= thresholds[month] else "Fail")
-            )
+            # Remove rows with Site wise KPI = 0
+            site_kpi = site_kpi[site_kpi["Site wise KPI"] != 0]
 
-            # Add threshold and month information
+            # Add threshold and pass/fail information
             site_kpi["Threshold"] = thresholds[month]
+            site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
+                lambda x: "Pass" if x >= thresholds[month] else "Fail"
+            )
             site_kpi["Month"] = month
 
-            # Add failing sites to the summary (excluding "Unsettled")
+            # Add failing sites to the summary
             fail_summary = pd.concat(
-                [fail_summary, site_kpi[site_kpi["Pass/Fail"].isin(["Fail", "Unsettled"])]],
+                [fail_summary, site_kpi[site_kpi["Pass/Fail"] == "Fail"]],
                 ignore_index=True
             )
 
@@ -102,8 +102,8 @@ def analyze_fails(client, fail_summary):
     consecutive_fails = streaks[streaks["Fail_Streak"] >= 3].drop(columns=["Consecutive Group"])
     consecutive_fails = consecutive_fails.sort_values(by="Fail_Streak", ascending=False)
 
-    # Total fails (excluding Unsettled)
-    fail_count = fail_summary[fail_summary["Pass/Fail"] != "Unsettled"].groupby("Site ID").size().reset_index(name="Fail Count")
+    # Total fails
+    fail_count = fail_summary.groupby("Site ID").size().reset_index(name="Fail Count")
     fail_count = fail_count[fail_count["Fail Count"] >= 5]
     fail_count = fail_count.merge(fail_summary[["Site ID", "RIO"]].drop_duplicates(), on="Site ID", how="left")
 
@@ -117,7 +117,12 @@ st.title("KPI Analysis Tool")
 
 # Choose client type
 client = st.selectbox("Select Client", options=["GP", "BL"])
+
+# Display thresholds for selected client
+st.sidebar.header(f"KPI Thresholds for {client}")
 thresholds = THRESHOLDS[client]
+for month in MONTHS:
+    st.sidebar.write(f"{month}: {thresholds[month]}")
 
 # File uploads
 st.sidebar.header(f"Upload Files for {client}")
@@ -136,7 +141,7 @@ if st.button("Process Files"):
             total_fails, consecutive_fails = analyze_fails(client, fail_summary)
 
             # Save results to an Excel file
-            output_file = "KPI_Analysis_Results.xlsx"
+            output_file = f"{client}_KPI_Analysis_Result.xlsx"
             with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
                 for month, df in results.items():
                     df.sort_values(by="Site wise KPI", ascending=False).to_excel(writer, sheet_name=month, index=False)
@@ -144,10 +149,10 @@ if st.button("Process Files"):
                 consecutive_fails.to_excel(writer, sheet_name="Consecutive Failures", index=False)
 
             # Display results
-            st.subheader("Sites with Total KPI Failures (5 or More)")
+            st.subheader(f"Sites with Total KPI Failures (5 or More) for {client}")
             st.write(total_fails)
 
-            st.subheader("Sites with 3 or More Consecutive Month Failures")
+            st.subheader(f"Sites with 3 or More Consecutive Month Failures for {client}")
             st.write(consecutive_fails)
 
             # Download button
