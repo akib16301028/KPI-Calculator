@@ -40,6 +40,7 @@ def process_files(month_data, thresholds):
 
 # Function to analyze fail results
 def analyze_fails(fail_summary):
+    # Count the number of failures for each site
     fail_count = fail_summary.groupby("Site ID")["Pass/Fail"].count()
     frequent_fails = fail_count[fail_count >= 5].reset_index()
     frequent_fails.columns = ["Site ID", "Fail Count"]
@@ -51,13 +52,13 @@ def analyze_fails(fail_summary):
         fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
     )
 
-    # Rename 'Fail Streak' to 'Fail_Streak' to avoid issues with 'query' method
+    # Rename 'Consecutive Fail' to 'Fail_Streak' to avoid issues with 'query' method
     fail_summary = fail_summary.rename(columns={"Consecutive Fail": "Fail_Streak"})
 
     # Ensure 'Fail_Streak' is numeric and filter for sites failing for 3 or more consecutive months
     fail_summary["Fail_Streak"] = pd.to_numeric(fail_summary["Fail_Streak"], errors='coerce')
 
-    # Filter using boolean indexing
+    # Filter using boolean indexing for 3 consecutive fails
     consecutive_fails = fail_summary[fail_summary["Fail_Streak"] >= 3]
 
     return frequent_fails, consecutive_fails
@@ -106,7 +107,7 @@ if st.button("Process Files"):
                 consecutive_fails.to_excel(writer, sheet_name="Consecutive Fails", index=False)
 
             # Show tables in Streamlit
-            st.subheader("Sites Failing 5 or More Times")
+            st.subheader("Sites with Total KPI Failures 5 or More Times")
             st.write(frequent_fails)
 
             st.subheader("Sites Failing for 3 Consecutive Months")
