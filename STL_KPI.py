@@ -1,55 +1,71 @@
 import streamlit as st
 import pandas as pd
+import os
 
-# Default KPI thresholds for GP and BL
-GP_THRESHOLDS = {
-    "January": 99.65, "February": 99.65, "March": 99.65, "April": 99.40,
-    "May": 99.40, "June": 99.40, "July": 99.55, "August": 99.55,
-    "September": 99.55, "October": 99.65, "November": 99.65, "December": 99.65
-}
-BL_THRESHOLDS = {
-    "January": 99.76, "February": 99.6, "March": 99.49, "April": 99.95,
-    "May": 99.05, "June": 99.55, "July": 99.57, "August": 99.65,
-    "September": 99.66, "October": 99.7, "November": 99.78, "December": 99.77
+# KPI thresholds
+THRESHOLDS = {
+    "GP": {
+        "January": 99.65, "February": 99.65, "March": 99.65,
+        "April": 99.40, "May": 99.40, "June": 99.40,
+        "July": 99.55, "August": 99.55, "September": 99.55,
+        "October": 99.65, "November": 99.65, "December": 99.65
+    },
+    "BL": {
+        "January": 99.76, "February": 99.6, "March": 99.49,
+        "April": 99.95, "May": 99.05, "June": 99.55,
+        "July": 99.57, "August": 99.65, "September": 99.66,
+        "October": 99.7, "November": 99.78, "December": 99.77
+    }
 }
 
-# Function to process files and thresholds
-def process_files(client, month_data, thresholds):
+# Initialize month names
+MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+]
+
+# Process files and calculate KPI failures
+def process_files(client, month_data):
+    thresholds = THRESHOLDS[client]
     results = {}
     fail_summary = pd.DataFrame()
 
     for month, data in month_data.items():
         if data is None:  # Skip if the file is not uploaded
             continue
+
         try:
-            # Read the required sheet starting from the correct header row
-            if client == "BL":
-                # For BL, use pyxlsb to read binary Excel files
-                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", engine="pyxlsb", header=2)
-                site_kpi = sheet_data[["Generic ID", "Site Wise KPI", "RIO"]]
-                site_kpi.rename(columns={"Generic ID": "Site ID", "Site Wise KPI": "Site wise KPI"}, inplace=True)
-            else:  # GP
+            # Load file based on client type
+            if client == "GP":
                 sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
-                site_kpi = sheet_data[["Site ID", "Site wise KPI", "RIO", "STL_SC"]]
+                site_col, kpi_col = "Site ID", "Site wise KPI"
+            elif client == "BL":
+                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2, engine="pyxlsb")
+                site_col, kpi_col = "Generic ID", "Site Wise KPI"
 
-            # Ignore rows with KPI == 0
-            site_kpi = site_kpi[site_kpi["Site wise KPI"] > 0]
+            # Extract relevant data
+            site_kpi = sheet_data[[site_col, kpi_col, "RIO"]].rename(
+                columns={site_col: "Site ID", kpi_col: "Site wise KPI"}
+            )
+            if client == "GP":
+                site_kpi["STL_SC"] = sheet_data["STL_SC"]
 
-            # Add Threshold and Pass/Fail columns
+            # Remove rows with Site wise KPI = 0
+            site_kpi = site_kpi[site_kpi["Site wise KPI"] != 0]
+
+            # Add threshold and pass/fail information
             site_kpi["Threshold"] = thresholds[month]
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
                 lambda x: "Pass" if x >= thresholds[month] else "Fail"
             )
-
-            # Add Fail results to the summary
             site_kpi["Month"] = month
+
+            # Add failing sites to the summary
             fail_summary = pd.concat(
                 [fail_summary, site_kpi[site_kpi["Pass/Fail"] == "Fail"]],
                 ignore_index=True
             )
 
-            # Sort data by KPI in descending order
-            site_kpi = site_kpi.sort_values(by="Site wise KPI", ascending=False)
             results[month] = site_kpi
         except KeyError as e:
             st.error(f"Error processing {month}: Missing required columns. {e}")
@@ -58,96 +74,84 @@ def process_files(client, month_data, thresholds):
 
     return results, fail_summary
 
-# Function to analyze fails
+# Analyze failures
 def analyze_fails(client, fail_summary):
-    fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: months.index(m))
-    fail_summary = fail_summary.sort_values(["Site ID", "Month Order"])
+    # Map months to order for consecutive calculations
+    fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: MONTHS.index(m) + 1)
 
-    # Calculate total fails for each site
-    group_columns = ["Site ID", "RIO"] if client == "BL" else ["Site ID", "RIO", "STL_SC"]
-    total_fails = (
-        fail_summary.groupby(group_columns)
-        .size()
-        .reset_index(name="Total_Fails")
-        .query("Total_Fails >= 5")
-        .sort_values(by="Total_Fails", ascending=False)
-    )
-
-    # Identify consecutive streaks
+    # Consecutive streaks
     fail_summary["Consecutive Group"] = (
         fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
     )
+    aggregation = {
+        "Fail_Streak": ("Month", "count"),
+        "Months": ("Month", lambda x: ", ".join(x)),
+        "RIO": ("RIO", "first"),
+    }
+
+    if client == "GP":
+        aggregation["STL_SC"] = ("STL_SC", "first")
+
     streaks = (
         fail_summary.groupby(["Site ID", "Consecutive Group"])
-        .agg(
-            Fail_Streak=("Month", "count"),
-            Months=("Month", lambda x: ", ".join(x)),
-            RIO=("RIO", "first"),
-            STL_SC=("STL_SC", "first") if client == "GP" else None
-        )
+        .agg(**aggregation)
         .reset_index()
     )
+
+    # Filter streaks of 3 or more consecutive fails
     consecutive_fails = streaks[streaks["Fail_Streak"] >= 3].drop(columns=["Consecutive Group"])
     consecutive_fails = consecutive_fails.sort_values(by="Fail_Streak", ascending=False)
 
-    return total_fails, consecutive_fails
+    # Total fails
+    fail_count = fail_summary.groupby("Site ID").size().reset_index(name="Fail Count")
+    fail_count = fail_count[fail_count["Fail Count"] >= 5]
+    fail_count = fail_count.merge(fail_summary[["Site ID", "RIO"]].drop_duplicates(), on="Site ID", how="left")
+
+    if client == "GP":
+        fail_count = fail_count.merge(fail_summary[["Site ID", "STL_SC"]].drop_duplicates(), on="Site ID", how="left")
+
+    return fail_count.sort_values(by="Fail Count", ascending=False), consecutive_fails
 
 # Streamlit App
-st.title("KPI Comparison Tool with Fail Analysis")
+st.title("KPI Analysis Tool")
 
-# Client selection
-st.sidebar.header("Client Selection")
-client = st.sidebar.selectbox("Select Client", ["GP", "BL"], index=0)
+# Choose client type
+client = st.selectbox("Select Client", options=["GP", "BL"])
+thresholds = THRESHOLDS[client]
 
-# Assign thresholds based on client
-thresholds = GP_THRESHOLDS if client == "GP" else BL_THRESHOLDS
-
-# Initialize month names
-months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-]
-
-# Step 1: File upload
+# File uploads
+st.sidebar.header(f"Upload Files for {client}")
 month_data = {}
-file_type = "xlsb" if client == "BL" else "xlsx"
-st.sidebar.header("Upload Files")
-for month in months:
-    st.sidebar.subheader(f"{month} (Threshold: {thresholds[month]})")
-    uploaded_file = st.sidebar.file_uploader(f"Upload {month} File ({file_type})", type=[file_type], key=month)
-    month_data[month] = uploaded_file
+for month in MONTHS:
+    month_data[month] = st.sidebar.file_uploader(f"Upload {month} File", type=["xlsx", "xlsb"], key=f"{client}_{month}")
 
-# Step 2: Process data when "Process" is clicked
+# Process files on button click
 if st.button("Process Files"):
-    if all(data is None for data in month_data.values()):
+    if all(file is None for file in month_data.values()):
         st.warning("Please upload at least one file!")
     else:
-        results, fail_summary = process_files(client, month_data, thresholds)
+        results, fail_summary = process_files(client, month_data)
         if results:
             # Analyze fails
             total_fails, consecutive_fails = analyze_fails(client, fail_summary)
 
-            # Display tables
+            # Save results to an Excel file
+            output_file = "KPI_Analysis_Results.xlsx"
+            with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
+                for month, df in results.items():
+                    df.sort_values(by="Site wise KPI", ascending=False).to_excel(writer, sheet_name=month, index=False)
+                total_fails.to_excel(writer, sheet_name="Total Failures", index=False)
+                consecutive_fails.to_excel(writer, sheet_name="Consecutive Failures", index=False)
+
+            # Display results
             st.subheader("Sites with Total KPI Failures (5 or More)")
-            if not total_fails.empty:
-                st.write(total_fails)
-            else:
-                st.write("No sites with 5 or more total failures.")
+            st.write(total_fails)
 
             st.subheader("Sites with 3 or More Consecutive Month Failures")
-            if not consecutive_fails.empty:
-                st.write(consecutive_fails)
-            else:
-                st.write("No sites with 3 or more consecutive month failures.")
+            st.write(consecutive_fails)
 
-            # Export to Excel
-            with pd.ExcelWriter("KPI_Results_with_Analysis.xlsx", engine="openpyxl") as writer:
-                for month, df in results.items():
-                    df.to_excel(writer, sheet_name=month, index=False)
-                total_fails.to_excel(writer, sheet_name="Total_Failures", index=False)
-                consecutive_fails.to_excel(writer, sheet_name="Consecutive_Fails", index=False)
-
-            with open("KPI_Results_with_Analysis.xlsx", "rb") as f:
-                st.download_button("Download Results", data=f, file_name="KPI_Results_with_Analysis.xlsx")
-        else:
-            st.warning("No files were processed.")
+            # Download button
+            with open(output_file, "rb") as f:
+                st.download_button(
+                    label="Download Results", data=f, file_name=output_file, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
