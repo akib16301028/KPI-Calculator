@@ -50,12 +50,15 @@ def analyze_fails(fail_summary):
     fail_summary["Consecutive Fail"] = (
         fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
     )
-    consecutive_fails = (
-        fail_summary.groupby(["Site ID", "Consecutive Fail"]).size()
-        .reset_index(name="Fail Streak")
-        .query("Fail Streak >= 3")
-        .drop_duplicates(subset=["Site ID"])[["Site ID"]]
-    )
+
+    # Rename 'Fail Streak' to 'Fail_Streak' to avoid issues with 'query' method
+    fail_summary = fail_summary.rename(columns={"Consecutive Fail": "Fail_Streak"})
+
+    # Ensure 'Fail_Streak' is numeric and filter for sites failing for 3 or more consecutive months
+    fail_summary["Fail_Streak"] = pd.to_numeric(fail_summary["Fail_Streak"], errors='coerce')
+
+    # Filter using boolean indexing
+    consecutive_fails = fail_summary[fail_summary["Fail_Streak"] >= 3]
 
     return frequent_fails, consecutive_fails
 
