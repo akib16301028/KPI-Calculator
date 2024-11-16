@@ -10,10 +10,8 @@ def process_files(month_data, thresholds):
         try:
             # Read the required sheet starting from the correct header row
             sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
-            # Filter rows where Remarks == "On Aired"
-            filtered_data = sheet_data[sheet_data["Remarks"] == "On Aired"]
             # Extract necessary columns
-            site_kpi = filtered_data[["Site ID", "Site wise KPI"]]
+            site_kpi = sheet_data[["Site ID", "Site wise KPI"]]
             # Add a Threshold column
             site_kpi["Threshold"] = thresholds[month]
             # Compare KPI values with the threshold and add a Pass/Fail column
