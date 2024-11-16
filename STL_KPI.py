@@ -55,9 +55,9 @@ def process_files(client, month_data):
             if client == "BL":
                 site_kpi["Site wise KPI"] = (
                     site_kpi["Site wise KPI"]
-                    .astype(str)
-                    .str.rstrip('%')  # Remove % symbol
-                    .astype(float)  # Use the value directly
+                    .astype(str)             # Ensure it's a string
+                    .str.rstrip('%')         # Remove the '%' sign
+                    .astype(float)           # Convert to float directly
                 )
 
             # Add threshold and pass/fail information
