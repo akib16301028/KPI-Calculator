@@ -50,13 +50,25 @@ def process_files(client, month_data):
             if client == "GP":
                 site_kpi["STL_SC"] = sheet_data["STL_SC"]
 
-            # Remove rows with Site wise KPI = 0
+            # Remove rows with missing KPI values
             site_kpi = site_kpi[site_kpi["Site wise KPI"] != 0]
 
+            # Handle percentage format for BL
+            if client == "BL":
+                site_kpi["Site wise KPI"] = (
+                    site_kpi["Site wise KPI"]
+                    .astype(str)
+                    .str.rstrip('%')  # Remove % symbol
+                    .astype(float) / 100  # Convert to decimal
+                )
+                threshold = thresholds[month] / 100  # Convert threshold to decimal
+            else:
+                threshold = thresholds[month]
+
             # Add threshold and pass/fail information
-            site_kpi["Threshold"] = thresholds[month]
+            site_kpi["Threshold"] = threshold
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
-                lambda x: "Pass" if x >= thresholds[month] else "Fail"
+                lambda x: "Pass" if x >= threshold else "Fail"
             )
             site_kpi["Month"] = month
 
