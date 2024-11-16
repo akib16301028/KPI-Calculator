@@ -61,21 +61,34 @@ def process_files(client, month_data, thresholds):
 
 # Function to analyze fails
 def analyze_fails(fail_summary):
+    # Add a numerical order for months to sort
     fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: months.index(m))
     fail_summary = fail_summary.sort_values(["Site ID", "Month Order"])
 
-    # Total fails by site
-    total_fails = (
-        fail_summary.groupby("Site ID")
-        .agg(
-            Total_Fails=("Pass/Fail", "size"),
-            RIO=("RIO", "first"),
-            STL_SC=("STL_SC", "first") if "STL_SC" in fail_summary.columns else None
+    # Aggregation for total failures by site
+    if "STL_SC" in fail_summary.columns:
+        total_fails = (
+            fail_summary.groupby("Site ID")
+            .agg(
+                Total_Fails=("Pass/Fail", "size"),
+                RIO=("RIO", "first"),
+                STL_SC=("STL_SC", "first")  # Include only if STL_SC exists
+            )
+            .reset_index()
+            .query("Total_Fails >= 5")
+            .sort_values("Total_Fails", ascending=False)
         )
-        .reset_index()
-        .query("Total_Fails >= 5")
-        .sort_values("Total_Fails", ascending=False)  # Sort by failure count
-    )
+    else:  # Skip STL_SC for BL
+        total_fails = (
+            fail_summary.groupby("Site ID")
+            .agg(
+                Total_Fails=("Pass/Fail", "size"),
+                RIO=("RIO", "first")
+            )
+            .reset_index()
+            .query("Total_Fails >= 5")
+            .sort_values("Total_Fails", ascending=False)
+        )
 
     # Calculate consecutive fail streaks
     fail_summary["Consecutive Group"] = (
@@ -86,15 +99,17 @@ def analyze_fails(fail_summary):
         .agg(
             Fail_Streak=("Month", "count"),
             Months=("Month", lambda x: ", ".join(x)),
-            RIO=("RIO", "first"),
-            STL_SC=("STL_SC", "first") if "STL_SC" in fail_summary.columns else None
+            RIO=("RIO", "first")
         )
         .reset_index()
-        .sort_values("Fail_Streak", ascending=False)  # Sort by fail streak count
+        .sort_values("Fail_Streak", ascending=False)
     )
+
+    # Filter streaks with 3 or more consecutive fails
     consecutive_fails = streaks[streaks["Fail_Streak"] >= 3].drop(columns=["Consecutive Group"])
 
     return total_fails, consecutive_fails
+
 
 # Streamlit App
 st.title("Monthly KPI Comparison Tool with Fail Analysis")
