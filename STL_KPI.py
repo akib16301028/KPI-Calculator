@@ -1,8 +1,5 @@
 import streamlit as st
 import pandas as pd
-from openpyxl import Workbook
-from openpyxl.styles import PatternFill
-from openpyxl.utils.dataframe import dataframe_to_rows
 
 # Function to process files and thresholds
 def process_files(month_data, thresholds):
@@ -17,9 +14,8 @@ def process_files(month_data, thresholds):
             sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
             # Extract necessary columns
             site_kpi = sheet_data[["Site ID", "Site wise KPI"]]
-            # Handle missing KPI values
-            missing_kpi = site_kpi[site_kpi["Site wise KPI"].isna()]
-            site_kpi = site_kpi.dropna(subset=["Site wise KPI"])
+            # Fill missing KPI values with a placeholder (e.g., 0 or leave NaN)
+            site_kpi["Site wise KPI"] = site_kpi["Site wise KPI"].fillna(0)
 
             # Add Threshold and Pass/Fail columns
             site_kpi["Threshold"] = thresholds[month]
@@ -34,7 +30,7 @@ def process_files(month_data, thresholds):
                 ignore_index=True
             )
 
-            results[month] = (site_kpi, missing_kpi)
+            results[month] = site_kpi
         except KeyError as e:
             st.error(f"Error processing {month}: Missing required columns. {e}")
         except Exception as e:
@@ -45,19 +41,21 @@ def process_files(month_data, thresholds):
 # Function to analyze fail results
 def analyze_fails(fail_summary):
     fail_count = fail_summary.groupby("Site ID")["Pass/Fail"].count()
-    fail_consecutive = fail_summary.sort_values(["Site ID", "Month"])
-    fail_consecutive["Consecutive Fail"] = (
-        fail_consecutive.groupby("Site ID").cumcount() + 1
-    )
-
-    # Sites failing 5 or more times
     frequent_fails = fail_count[fail_count >= 5].reset_index()
     frequent_fails.columns = ["Site ID", "Fail Count"]
 
     # Sites failing for 3 consecutive months
-    consecutive_fails = fail_consecutive[
-        fail_consecutive["Consecutive Fail"] >= 3
-    ].drop_duplicates(subset=["Site ID"])[["Site ID"]]
+    fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: months.index(m))
+    fail_summary = fail_summary.sort_values(["Site ID", "Month Order"])
+    fail_summary["Consecutive Fail"] = (
+        fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
+    )
+    consecutive_fails = (
+        fail_summary.groupby(["Site ID", "Consecutive Fail"]).size()
+        .reset_index(name="Fail Streak")
+        .query("Fail Streak >= 3")
+        .drop_duplicates(subset=["Site ID"])[["Site ID"]]
+    )
 
     return frequent_fails, consecutive_fails
 
@@ -96,25 +94,13 @@ if st.button("Process Files"):
             frequent_fails, consecutive_fails = analyze_fails(fail_summary)
 
             # Combine results into a single Excel workbook
-            wb = Workbook()
-            for month, (processed_data, missing_data) in results.items():
-                ws = wb.create_sheet(title=month)
-                for row in dataframe_to_rows(processed_data, index=False, header=True):
-                    ws.append(row)
+            with pd.ExcelWriter("KPI_Results_with_Analysis.xlsx", engine="openpyxl") as writer:
+                for month, df in results.items():
+                    df.to_excel(writer, sheet_name=month, index=False)
 
-                # Highlight missing KPI values in red
-                for row in dataframe_to_rows(missing_data, index=False, header=True):
-                    ws.append(row)
-                    for cell in ws[-1]:
-                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-
-            # Add summary sheet
-            summary_ws = wb.create_sheet(title="Fail Summary")
-            for row in dataframe_to_rows(frequent_fails, index=False, header=True):
-                summary_ws.append(row)
-
-            # Save the workbook
-            wb.save("KPI_Results_with_Analysis.xlsx")
+                # Add summary sheet for fails
+                frequent_fails.to_excel(writer, sheet_name="Frequent Fails", index=False)
+                consecutive_fails.to_excel(writer, sheet_name="Consecutive Fails", index=False)
 
             # Show tables in Streamlit
             st.subheader("Sites Failing 5 or More Times")
