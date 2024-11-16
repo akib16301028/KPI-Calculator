@@ -13,7 +13,7 @@ def process_files(month_data, thresholds):
             # Read the required sheet starting from the correct header row
             sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
             # Extract necessary columns
-            site_kpi = sheet_data[["Site ID", "Site wise KPI"]]
+            site_kpi = sheet_data[["Site ID", "Site wise KPI", "RIO", "STL_SC"]]
             # Fill missing KPI values with a placeholder (e.g., 0 or leave NaN)
             site_kpi["Site wise KPI"] = site_kpi["Site wise KPI"].fillna(0)
 
@@ -44,6 +44,14 @@ def analyze_fails(fail_summary):
     fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: months.index(m))
     fail_summary = fail_summary.sort_values(["Site ID", "Month Order"])
 
+    # Calculate total fails for each site
+    total_fails = (
+        fail_summary.groupby("Site ID")
+        .size()
+        .reset_index(name="Total Fails")
+        .query("`Total Fails` >= 5")
+    )
+
     # Calculate the gap between consecutive failures
     fail_summary["Consecutive Group"] = (
         fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
@@ -54,16 +62,17 @@ def analyze_fails(fail_summary):
         fail_summary.groupby(["Site ID", "Consecutive Group"])
         .agg(
             Fail_Streak=("Month", "count"),
-            Months=("Month", lambda x: ", ".join(x))
+            Months=("Month", lambda x: ", ".join(x)),
+            RIO=("RIO", "first"),
+            STL_SC=("STL_SC", "first"),
         )
         .reset_index()
     )
 
-    # Separate streaks into exactly 3 consecutive months and more than 3 months
-    three_month_streaks = streaks[streaks["Fail_Streak"] == 3]
-    more_than_three_months = streaks[streaks["Fail_Streak"] > 3]
+    # Filter streaks for 3 or more consecutive months
+    consecutive_fails = streaks[streaks["Fail_Streak"] >= 3].drop(columns=["Consecutive Group"])
 
-    return three_month_streaks, more_than_three_months
+    return total_fails, consecutive_fails
 
 # Streamlit App
 st.title("Monthly KPI Comparison Tool with Fail Analysis")
@@ -97,25 +106,21 @@ if st.button("Process Files"):
         results, fail_summary = process_files(month_data, thresholds)
         if results:
             # Analyze fails
-            three_month_streaks, more_than_three_months = analyze_fails(fail_summary)
+            total_fails, consecutive_fails = analyze_fails(fail_summary)
 
-            # Display the table for exactly 3 consecutive month failures
-            st.subheader("Sites with Exactly 3 Consecutive Month Failures")
-            if not three_month_streaks.empty:
-                for site_id, group in three_month_streaks.groupby("Site ID"):
-                    st.write(f"Site: {site_id}")
-                    st.write(group)
+            # Display the table for sites with 5 or more total fails
+            st.subheader("Sites with Total KPI Failures (5 or More)")
+            if not total_fails.empty:
+                st.write(total_fails)
             else:
-                st.write("No sites with exactly 3 consecutive month failures.")
+                st.write("No sites with 5 or more total failures.")
 
-            # Display the table for more than 3 consecutive month failures
-            st.subheader("Sites with More than 3 Consecutive Month Failures")
-            if not more_than_three_months.empty:
-                for site_id, group in more_than_three_months.groupby("Site ID"):
-                    st.write(f"Site: {site_id}")
-                    st.write(group)
+            # Display the table for 3 or more consecutive month failures
+            st.subheader("Sites with 3 or More Consecutive Month Failures")
+            if not consecutive_fails.empty:
+                st.write(consecutive_fails)
             else:
-                st.write("No sites with more than 3 consecutive month failures.")
+                st.write("No sites with 3 or more consecutive month failures.")
 
             # Combine results into a single Excel workbook
             with pd.ExcelWriter("KPI_Results_with_Analysis.xlsx", engine="openpyxl") as writer:
@@ -123,8 +128,8 @@ if st.button("Process Files"):
                     df.to_excel(writer, sheet_name=month, index=False)
 
                 # Add summary sheets for streaks
-                three_month_streaks.to_excel(writer, sheet_name="Three_Month_Streaks", index=False)
-                more_than_three_months.to_excel(writer, sheet_name="More_Than_Three", index=False)
+                total_fails.to_excel(writer, sheet_name="Total_Failures", index=False)
+                consecutive_fails.to_excel(writer, sheet_name="Consecutive_Fails", index=False)
 
             # Provide download button
             with open("KPI_Results_with_Analysis.xlsx", "rb") as f:
