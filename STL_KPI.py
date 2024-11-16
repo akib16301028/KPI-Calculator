@@ -8,9 +8,11 @@ def process_files(month_data, thresholds):
         if data is None:  # Skip if the file is not uploaded
             continue
         try:
-            # Read the required sheet and extract necessary columns
-            sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation")
+            # Read the required sheet starting from the correct header row
+            sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
+            # Extract necessary columns
             site_kpi = sheet_data[["Site ID", "Site wise KPI"]]
+            # Compare KPI values with the threshold and add a Pass/Fail column
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
                 lambda x: "Pass" if x >= thresholds[month] else "Fail"
             )
