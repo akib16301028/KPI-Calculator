@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import os
 
 # KPI thresholds
 THRESHOLDS = {
@@ -18,7 +17,6 @@ THRESHOLDS = {
     }
 }
 
-# Initialize month names
 MONTHS = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
@@ -31,11 +29,11 @@ def process_files(client, month_data):
     fail_summary = pd.DataFrame()
 
     for month, data in month_data.items():
-        if data is None:  # Skip if the file is not uploaded
+        if data is None:
             continue
 
         try:
-            # Load file based on client type
+            # Load file
             if client == "GP":
                 sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
                 site_col, kpi_col = "Site ID", "Site wise KPI"
@@ -43,7 +41,7 @@ def process_files(client, month_data):
                 sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2, engine="pyxlsb")
                 site_col, kpi_col = "Generic ID", "Site Wise KPI"
 
-            # Extract relevant data
+            # Extract and clean data
             site_kpi = sheet_data[[site_col, kpi_col, "RIO"]].rename(
                 columns={site_col: "Site ID", kpi_col: "Site wise KPI"}
             )
@@ -59,16 +57,13 @@ def process_files(client, month_data):
                     site_kpi["Site wise KPI"]
                     .astype(str)
                     .str.rstrip('%')  # Remove % symbol
-                    .astype(float) / 100  # Convert to decimal
+                    .astype(float)  # Use the value directly
                 )
-                threshold = thresholds[month] / 100  # Convert threshold to decimal
-            else:
-                threshold = thresholds[month]
 
             # Add threshold and pass/fail information
-            site_kpi["Threshold"] = threshold
+            site_kpi["Threshold"] = thresholds[month]
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
-                lambda x: "Pass" if x >= threshold else "Fail"
+                lambda x: "Pass" if x >= thresholds[month] else "Fail"
             )
             site_kpi["Month"] = month
 
@@ -88,10 +83,8 @@ def process_files(client, month_data):
 
 # Analyze failures
 def analyze_fails(client, fail_summary):
-    # Map months to order for consecutive calculations
     fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: MONTHS.index(m) + 1)
 
-    # Consecutive streaks
     fail_summary["Consecutive Group"] = (
         fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
     )
@@ -100,7 +93,6 @@ def analyze_fails(client, fail_summary):
         "Months": ("Month", lambda x: ", ".join(x)),
         "RIO": ("RIO", "first"),
     }
-
     if client == "GP":
         aggregation["STL_SC"] = ("STL_SC", "first")
 
@@ -110,11 +102,9 @@ def analyze_fails(client, fail_summary):
         .reset_index()
     )
 
-    # Filter streaks of 3 or more consecutive fails
     consecutive_fails = streaks[streaks["Fail_Streak"] >= 3].drop(columns=["Consecutive Group"])
     consecutive_fails = consecutive_fails.sort_values(by="Fail_Streak", ascending=False)
 
-    # Total fails
     fail_count = fail_summary.groupby("Site ID").size().reset_index(name="Fail Count")
     fail_count = fail_count[fail_count["Fail Count"] >= 5]
     fail_count = fail_count.merge(fail_summary[["Site ID", "RIO"]].drop_duplicates(), on="Site ID", how="left")
@@ -127,7 +117,7 @@ def analyze_fails(client, fail_summary):
 # Streamlit App
 st.title("KPI Analysis Tool")
 
-# Choose client type
+# Choose client
 client = st.selectbox("Select Client", options=["GP", "BL"])
 thresholds = THRESHOLDS[client]
 
@@ -137,17 +127,14 @@ month_data = {}
 for month in MONTHS:
     month_data[month] = st.sidebar.file_uploader(f"Upload {month} File", type=["xlsx", "xlsb"], key=f"{client}_{month}")
 
-# Process files on button click
 if st.button("Process Files"):
     if all(file is None for file in month_data.values()):
         st.warning("Please upload at least one file!")
     else:
         results, fail_summary = process_files(client, month_data)
         if results:
-            # Analyze fails
             total_fails, consecutive_fails = analyze_fails(client, fail_summary)
 
-            # Save results to an Excel file
             output_file = "KPI_Analysis_Results.xlsx"
             with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
                 for month, df in results.items():
@@ -155,14 +142,12 @@ if st.button("Process Files"):
                 total_fails.to_excel(writer, sheet_name="Total Failures", index=False)
                 consecutive_fails.to_excel(writer, sheet_name="Consecutive Failures", index=False)
 
-            # Display results
             st.subheader("Sites with Total KPI Failures (5 or More)")
             st.write(total_fails)
 
             st.subheader("Sites with 3 or More Consecutive Month Failures")
             st.write(consecutive_fails)
 
-            # Download button
             with open(output_file, "rb") as f:
                 st.download_button(
                     label="Download Results", data=f, file_name=output_file, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
