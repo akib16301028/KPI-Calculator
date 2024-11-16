@@ -1,7 +1,14 @@
 import streamlit as st
 import pandas as pd
 
-# KPI thresholds for BL (as percentages)
+# Define thresholds for GP and BL
+THRESHOLDS_GP = {
+    "January": 99.65, "February": 99.65, "March": 99.65,
+    "April": 99.40, "May": 99.40, "June": 99.40,
+    "July": 99.55, "August": 99.55, "September": 99.55,
+    "October": 99.65, "November": 99.65, "December": 99.65
+}
+
 THRESHOLDS_BL = {
     "January": 99.76, "February": 99.6, "March": 99.49,
     "April": 99.95, "May": 99.05, "June": 99.55,
@@ -14,19 +21,24 @@ MONTHS = [
     "July", "August", "September", "October", "November", "December"
 ]
 
-# Process BL file and calculate KPI failures
-def process_bl_file(month_data):
+# Process GP and BL files and calculate KPI failures
+def process_file(month_data, client_type):
     fail_summary = pd.DataFrame()
+    thresholds = THRESHOLDS_GP if client_type == "GP" else THRESHOLDS_BL
 
     for month, data in month_data.items():
         if data is None:
             continue
 
         try:
-            # Load BL file
-            sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2, engine="pyxlsb")
-            site_col, kpi_col = "Generic ID", "Site Wise KPI"
-            
+            # Load the file (for BL use pyxlsb)
+            if client_type == "BL":
+                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2, engine="pyxlsb")
+                site_col, kpi_col = "Generic ID", "Site Wise KPI"
+            else:
+                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
+                site_col, kpi_col = "Site ID", "Site wise KPI"
+
             # Extract and clean data
             site_kpi = sheet_data[[site_col, kpi_col]].rename(
                 columns={site_col: "Site ID", kpi_col: "Site wise KPI"}
@@ -36,9 +48,9 @@ def process_bl_file(month_data):
             site_kpi = site_kpi[site_kpi["Site wise KPI"] != 0]
 
             # Add threshold and pass/fail information
-            site_kpi["Threshold"] = THRESHOLDS_BL[month]
+            site_kpi["Threshold"] = thresholds[month]
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
-                lambda x: "Pass" if x >= THRESHOLDS_BL[month] else "Fail"
+                lambda x: "Pass" if x >= thresholds[month] else "Fail"
             )
             site_kpi["Month"] = month
 
@@ -55,8 +67,8 @@ def process_bl_file(month_data):
 
     return fail_summary
 
-# Analyze BL failures (3 consecutive or more)
-def analyze_bl_fails(fail_summary):
+# Analyze failures: Sites with 5+ total failures and consecutive month failures
+def analyze_fails(fail_summary):
     fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: MONTHS.index(m) + 1)
 
     fail_summary["Consecutive Group"] = (
@@ -84,24 +96,27 @@ def analyze_bl_fails(fail_summary):
 
     return fail_count.sort_values(by="Fail Count", ascending=False), consecutive_fails
 
-# Streamlit App for BL Client
-st.title("KPI Analysis Tool for BL Client")
+# Streamlit App for GP and BL Clients
+st.title("KPI Analysis Tool")
+
+# Ask user for client type
+client_type = st.selectbox("Select Client", ["GP", "BL"])
 
 # File uploads
-st.sidebar.header("Upload Files for BL")
+st.sidebar.header(f"Upload Files for {client_type}")
 month_data = {}
 for month in MONTHS:
-    month_data[month] = st.sidebar.file_uploader(f"Upload {month} File", type=["xlsb"], key=f"BL_{month}")
+    month_data[month] = st.sidebar.file_uploader(f"Upload {month} File", type=["xlsb"], key=f"{client_type}_{month}")
 
 if st.button("Process Files"):
     if all(file is None for file in month_data.values()):
         st.warning("Please upload at least one file!")
     else:
-        fail_summary = process_bl_file(month_data)
+        fail_summary = process_file(month_data, client_type)
         if not fail_summary.empty:
-            total_fails, consecutive_fails = analyze_bl_fails(fail_summary)
+            total_fails, consecutive_fails = analyze_fails(fail_summary)
 
-            output_file = "BL_KPI_Analysis_Results.xlsx"
+            output_file = f"{client_type}_KPI_Analysis_Results.xlsx"
             with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
                 fail_summary.to_excel(writer, sheet_name="Fail Summary", index=False)
                 total_fails.to_excel(writer, sheet_name="Total Failures", index=False)
