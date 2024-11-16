@@ -52,14 +52,8 @@ def analyze_fails(fail_summary):
         fail_summary.groupby("Site ID")["Month Order"].diff().fillna(1).ne(1).cumsum()
     )
 
-    # Rename 'Consecutive Fail' to 'Fail_Streak' to avoid issues with 'query' method
-    fail_summary = fail_summary.rename(columns={"Consecutive Fail": "Fail_Streak"})
-
-    # Ensure 'Fail_Streak' is numeric and filter for sites failing for 3 or more consecutive months
-    fail_summary["Fail_Streak"] = pd.to_numeric(fail_summary["Fail_Streak"], errors='coerce')
-
-    # Filter using boolean indexing for 3 consecutive fails
-    consecutive_fails = fail_summary[fail_summary["Fail_Streak"] >= 3]
+    # Filter sites with 3 consecutive failures
+    consecutive_fails = fail_summary[fail_summary["Consecutive Fail"] >= 3]
 
     return frequent_fails, consecutive_fails
 
@@ -97,6 +91,15 @@ if st.button("Process Files"):
             # Analyze fails
             frequent_fails, consecutive_fails = analyze_fails(fail_summary)
 
+            # Display the table for sites with 5 or more KPI failures
+            st.subheader("Sites with Total KPI Failures (5 or more months)")
+            st.write(frequent_fails)
+
+            # Now, we generate separate tables for each site that failed for 3 consecutive months
+            for site_id, group in consecutive_fails.groupby("Site ID"):
+                st.subheader(f"Site: {site_id} - 3 Consecutive Failures")
+                st.write(group)
+
             # Combine results into a single Excel workbook
             with pd.ExcelWriter("KPI_Results_with_Analysis.xlsx", engine="openpyxl") as writer:
                 for month, df in results.items():
@@ -104,14 +107,10 @@ if st.button("Process Files"):
 
                 # Add summary sheet for fails
                 frequent_fails.to_excel(writer, sheet_name="Frequent Fails", index=False)
-                consecutive_fails.to_excel(writer, sheet_name="Consecutive Fails", index=False)
 
-            # Show tables in Streamlit
-            st.subheader("Sites with Total KPI Failures 5 or More Times")
-            st.write(frequent_fails)
-
-            st.subheader("Sites Failing for 3 Consecutive Months")
-            st.write(consecutive_fails)
+                # Add separate sheets for sites with 3 consecutive failures
+                for site_id, group in consecutive_fails.groupby("Site ID"):
+                    group.to_excel(writer, sheet_name=f"Site_{site_id}_Consecutive_Fails", index=False)
 
             # Provide download button
             with open("KPI_Results_with_Analysis.xlsx", "rb") as f:
