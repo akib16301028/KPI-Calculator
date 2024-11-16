@@ -9,14 +9,14 @@ def process_files(month_data, thresholds):
             continue
         try:
             # Read the required sheet and extract necessary columns
-            sheet_data = pd.read_excel(data, sheet_name="Site wise KPI")
-            site_kpi = sheet_data[["Site ID", "Total Hour Calculation"]]
-            site_kpi["Pass/Fail"] = site_kpi["Total Hour Calculation"].apply(
+            sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation")
+            site_kpi = sheet_data[["Site ID", "Site wise KPI"]]
+            site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
                 lambda x: "Pass" if x >= thresholds[month] else "Fail"
             )
             results[month] = site_kpi
         except KeyError as e:
-            st.error(f"Error processing {month}: {e}. Please check the column names or sheet.")
+            st.error(f"Error processing {month}: Missing required columns. {e}")
         except Exception as e:
             st.error(f"Unexpected error with {month}: {e}")
     return results
