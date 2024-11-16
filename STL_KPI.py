@@ -12,20 +12,29 @@ def process_files(client, month_data, thresholds):
         try:
             # Read the file and handle BL-specific binary format
             if client == "BL":
-                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", engine="pyxlsb")
+                sheet_data = pd.read_excel(
+                    data,
+                    sheet_name="Total Hour Calculation",
+                    skiprows=2,  # Skip the first two rows for BL files
+                    engine="pyxlsb"
+                )
             else:
-                sheet_data = pd.read_excel(data, sheet_name="Total Hour Calculation", header=2)
-            
+                sheet_data = pd.read_excel(
+                    data,
+                    sheet_name="Total Hour Calculation",
+                    header=2  # Start reading from the third row for GP files
+                )
+
             # Extract necessary columns based on client
             if client == "GP":
                 site_kpi = sheet_data[["Site ID", "Site wise KPI", "RIO", "STL_SC"]]
             else:  # For BL
                 site_kpi = sheet_data[["Generic ID", "Site Wise KPI", "RIO"]]
                 site_kpi.rename(columns={"Generic ID": "Site ID", "Site Wise KPI": "Site wise KPI"}, inplace=True)
-            
+
             # Skip rows where "Site wise KPI" is 0
             site_kpi = site_kpi[site_kpi["Site wise KPI"] > 0]
-            
+
             # Add Threshold and Pass/Fail columns
             site_kpi["Threshold"] = thresholds[month]
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
@@ -34,7 +43,7 @@ def process_files(client, month_data, thresholds):
 
             # Sort data by KPI in descending order
             site_kpi = site_kpi.sort_values(by="Site wise KPI", ascending=False)
-            
+
             # Add Fail results to the summary
             site_kpi["Month"] = month
             fail_summary = pd.concat(
