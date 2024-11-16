@@ -50,19 +50,19 @@ def process_files(client, month_data):
             if client == "GP":
                 site_kpi["STL_SC"] = sheet_data["STL_SC"]
 
-            # Remove rows with Site wise KPI = 0
-            site_kpi = site_kpi[site_kpi["Site wise KPI"] != 0]
-
-            # Add threshold and pass/fail information
-            site_kpi["Threshold"] = thresholds[month]
+            # Remove rows with Site wise KPI = 0 or NaN
+            site_kpi = site_kpi[site_kpi["Site wise KPI"].notna()]
             site_kpi["Pass/Fail"] = site_kpi["Site wise KPI"].apply(
-                lambda x: "Pass" if x >= thresholds[month] else "Fail"
+                lambda x: "Unsettled" if x == 0 or pd.isna(x) else ("Pass" if x >= thresholds[month] else "Fail")
             )
+
+            # Add threshold and month information
+            site_kpi["Threshold"] = thresholds[month]
             site_kpi["Month"] = month
 
-            # Add failing sites to the summary
+            # Add failing sites to the summary (excluding "Unsettled")
             fail_summary = pd.concat(
-                [fail_summary, site_kpi[site_kpi["Pass/Fail"] == "Fail"]],
+                [fail_summary, site_kpi[site_kpi["Pass/Fail"].isin(["Fail", "Unsettled"])]],
                 ignore_index=True
             )
 
@@ -102,8 +102,8 @@ def analyze_fails(client, fail_summary):
     consecutive_fails = streaks[streaks["Fail_Streak"] >= 3].drop(columns=["Consecutive Group"])
     consecutive_fails = consecutive_fails.sort_values(by="Fail_Streak", ascending=False)
 
-    # Total fails
-    fail_count = fail_summary.groupby("Site ID").size().reset_index(name="Fail Count")
+    # Total fails (excluding Unsettled)
+    fail_count = fail_summary[fail_summary["Pass/Fail"] != "Unsettled"].groupby("Site ID").size().reset_index(name="Fail Count")
     fail_count = fail_count[fail_count["Fail Count"] >= 5]
     fail_count = fail_count.merge(fail_summary[["Site ID", "RIO"]].drop_duplicates(), on="Site ID", how="left")
 
