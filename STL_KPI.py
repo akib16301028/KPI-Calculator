@@ -44,12 +44,16 @@ def analyze_fails(fail_summary):
     fail_summary["Month Order"] = fail_summary["Month"].apply(lambda m: months.index(m))
     fail_summary = fail_summary.sort_values(["Site ID", "Month Order"])
 
-    # Calculate total fails for each site
+    # Calculate total fails for each site and include RIO and STL_SC
     total_fails = (
         fail_summary.groupby("Site ID")
-        .size()
-        .reset_index(name="Total Fails")
-        .query("`Total Fails` >= 5")
+        .agg(
+            Total_Fails=("Pass/Fail", "size"),
+            RIO=("RIO", "first"),
+            STL_SC=("STL_SC", "first")
+        )
+        .reset_index()
+        .query("Total_Fails >= 5")
     )
 
     # Calculate the gap between consecutive failures
