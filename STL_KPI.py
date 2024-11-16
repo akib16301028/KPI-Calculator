@@ -7,12 +7,18 @@ def process_files(month_data, thresholds):
     for month, data in month_data.items():
         if data is None:  # Skip if the file is not uploaded
             continue
-        # Read the file and extract necessary columns
-        site_kpi = data[["Site ID", "Total Hour Calculation"]]
-        site_kpi["Pass/Fail"] = site_kpi["Total Hour Calculation"].apply(
-            lambda x: "Pass" if x >= thresholds[month] else "Fail"
-        )
-        results[month] = site_kpi
+        try:
+            # Read the required sheet and extract necessary columns
+            sheet_data = pd.read_excel(data, sheet_name="Site wise KPI")
+            site_kpi = sheet_data[["Site ID", "Total Hour Calculation"]]
+            site_kpi["Pass/Fail"] = site_kpi["Total Hour Calculation"].apply(
+                lambda x: "Pass" if x >= thresholds[month] else "Fail"
+            )
+            results[month] = site_kpi
+        except KeyError as e:
+            st.error(f"Error processing {month}: {e}. Please check the column names or sheet.")
+        except Exception as e:
+            st.error(f"Unexpected error with {month}: {e}")
     return results
 
 # Title of the Streamlit app
@@ -33,7 +39,7 @@ for month in months:
     st.sidebar.subheader(f"{month}")
     uploaded_file = st.sidebar.file_uploader(f"Upload {month} File", type=["xlsx"], key=month)
     if uploaded_file is not None:
-        month_data[month] = pd.read_excel(uploaded_file)
+        month_data[month] = uploaded_file  # Store the uploaded file object
         thresholds[month] = st.sidebar.number_input(f"{month} KPI Threshold", min_value=0.0, value=0.0)
     else:
         st.sidebar.write(f"Ignoring {month}.")
