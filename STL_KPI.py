@@ -10,8 +10,8 @@ EXPECTED_COLUMNS = [
 
 # SLA values for each month
 SLA_VALUES = {
-    "January": 99.76, "February": 99.6, "March": 99.49, "April": 98.95, "May": 99.05, "June": 99.55,
-    "July": 99.57, "August": 99.65, "September": 99.66, "October": 99.7, "November": 99.78, "December": 99.77
+    "January": 99.65, "February": 99.65, "March": 99.65, "April": 99.4, "May": 99.4, "June": 99.4,
+    "July": 99.55, "August": 99.55, "September": 99.55, "October": 99.65, "November": 99.65, "December": 99.65
 }
 
 # Dictionary to map month names
