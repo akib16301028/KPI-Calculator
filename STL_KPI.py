@@ -15,7 +15,7 @@ if uploaded_file is not None:
         # Check if "Site Wise KPI" column exists
         if "Site Wise KPI" in df.columns:
             # Convert percentage values to numeric format
-            df["Site Wise KPI"] = df["Site Wise KPI"].astype(str).str.rstrip("%").astype(float)
+            df["Site Wise KPI"] = df["Site wise KPI"].astype(str).str.rstrip("%").astype(float)
 
             # Display the updated DataFrame
             st.success("File processed successfully!")
