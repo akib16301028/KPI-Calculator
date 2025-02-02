@@ -1,12 +1,18 @@
 import streamlit as st
 import pandas as pd
 
-# Define expected columns
+# Define expected columns (excluding SLA since we'll add it manually)
 EXPECTED_COLUMNS = [
     "Generic ID", "RIO", "BL Circle", "BL RO", "BL site ID", "TOWERCO Site ID", "RFAI Date", 
     "Start Date", "Last Date", "Total Day", "Hour", "Total Hour", "Site Wise total Downtime", 
     "Site Wise KPI"
 ]
+
+# SLA values for each month
+SLA_VALUES = {
+    "January": 99.76, "February": 99.6, "March": 99.49, "April": 98.95, "May": 99.05, "June": 99.55,
+    "July": 99.57, "August": 99.65, "September": 99.66, "October": 99.7, "November": 99.78, "December": 99.77
+}
 
 # Dictionary to map month names
 MONTHS = {
@@ -30,8 +36,14 @@ if all(MONTHS.values()):
             if missing_columns:
                 st.error(f"Unable to find column name {missing_columns} in month {month}")
                 continue
+            
             df = df[EXPECTED_COLUMNS]  # Select only required columns
             df["Month"] = month  # Assign month name
+            df["SLA"] = SLA_VALUES[month]  # Assign SLA value
+            
+            # Convert 'Site Wise KPI' to percentage format
+            df["Site Wise KPI"] = df["Site Wise KPI"] * 100
+            
             all_data.append(df)
         except Exception as e:
             st.error(f"Error processing {file.name}: {e}")
