@@ -5,7 +5,7 @@ import pandas as pd
 EXPECTED_COLUMNS = [
     "Generic ID", "RIO", "BL Circle", "BL RO", "BL site ID", "TOWERCO Site ID", "RFAI Date", 
     "Start Date", "Last Date", "Total Day", "Hour", "Total Hour", "Site Wise total Downtime", 
-    "Site Wise KPI", "SLA"
+    "Site Wise KPI"
 ]
 
 # Dictionary to map month names
