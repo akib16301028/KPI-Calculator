@@ -5,7 +5,7 @@ import pandas as pd
 EXPECTED_COLUMNS = [
     "Generic ID", "RIO", "BL Circle", "BL RO", "BL site ID", "TOWERCO Site ID", "RFAI Date", 
     "Start Date", "Last Date", "Total Day", "Hour", "Total Hour", "Site Wise total Downtime", 
-    "Site Wise KPI"
+    "Site Wise KPI", "SLA"
 ]
 
 # Dictionary to map month names
@@ -18,14 +18,14 @@ st.title("Excel File Merger for 12 Months")
 
 # File uploaders for each month
 for month in MONTHS.keys():
-    MONTHS[month] = st.file_uploader(f"Upload Excel file for {month}", type=["xls", "xlsx"], key=month)
+    MONTHS[month] = st.file_uploader(f"Upload Excel file for {month}", type=["xls", "xlsx", "xlsb"], key=month)
 
 if all(MONTHS.values()):
     all_data = []
     
     for month, file in MONTHS.items():
         try:
-            df = pd.read_excel(file, sheet_name="Total Hour Calculation", skiprows=2)  # Read specific sheet and skip first two rows
+            df = pd.read_excel(file, sheet_name="Total Hour Calculation", skiprows=2, engine="pyxlsb" if file.name.endswith(".xlsb") else None)  # Read specific sheet and skip first two rows
             missing_columns = [col for col in EXPECTED_COLUMNS if col not in df.columns]
             if missing_columns:
                 st.error(f"Unable to find column name {missing_columns} in month {month}")
