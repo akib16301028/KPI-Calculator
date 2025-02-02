@@ -42,7 +42,7 @@ if all(MONTHS.values()):
             df["SLA"] = SLA_VALUES[month]  # Assign SLA value
             
             # Convert 'Site wise KPI' to percentage format
-            df["Site wise KPI"] = df["Site wise KPI"] * 100
+            df["Site wise KPI"] = df["Site wise KPI"] / 100
             
             all_data.append(df)
         except Exception as e:
