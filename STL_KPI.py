@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
 
-# Define expected columns (excluding SLA since we'll add it manually)
+# Define expected columns for GP (excluding SLA since we'll add it manually)
 EXPECTED_COLUMNS = [
-    "Generic ID", "RIO", "BL Circle", "BL RO", "BL site ID", "TOWERCO Site ID", "RFAI Date", 
-    "Start Date", "Last Date", "Total Day", "Hour", "Total Hour", "Site Wise total Downtime", 
-    "Site Wise KPI"
+    "Generic ID", "RIO", "STL_SC", "Site ID", "STL Site Code", "Site Class Category", 
+    "On Air Date From GP end", "GP Circle", "RFAI Date", "Start Date", "Last Date", "Total Day", 
+    "Hour", "Total Hour", "Total Unavailable Hr", "Site wise KPI", "Remarks"
 ]
 
 # SLA values for each month
@@ -20,7 +20,7 @@ MONTHS = {
     "July": None, "August": None, "September": None, "October": None, "November": None, "December": None
 }
 
-st.title("Excel File Merger for 12 Months")
+st.title("GP Excel File Merger for 12 Months")
 
 # File uploaders for each month
 for month in MONTHS.keys():
@@ -41,8 +41,8 @@ if all(MONTHS.values()):
             df["Month"] = month  # Assign month name
             df["SLA"] = SLA_VALUES[month]  # Assign SLA value
             
-            # Convert 'Site Wise KPI' to percentage format
-            df["Site Wise KPI"] = df["Site Wise KPI"] * 100
+            # Convert 'Site wise KPI' to percentage format
+            df["Site wise KPI"] = df["Site wise KPI"] * 100
             
             all_data.append(df)
         except Exception as e:
